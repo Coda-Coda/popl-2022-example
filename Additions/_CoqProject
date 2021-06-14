@@ -1,0 +1,4 @@
+-R ../../../src DeepSpec
+-R ../Crowdfunding_Based_On_Scilla Crowdfunding_Based_On_Scilla
+-R . Additions
+./Tactics.v
