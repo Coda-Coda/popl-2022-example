@@ -1,0 +1,180 @@
+(* Based on https://github.com/Zilliqa/scilla-coq/blob/master/Contracts/Crowdfunding.v *)
+(* Also a relevant reference: https://scilla.readthedocs.io/en/latest/scilla-by-example.html#a-second-example-crowdfunding *)
+
+type addr := uint
+
+type Transfer = {
+    amount : uint;
+    recipient : uint;
+}
+external let transfer_nil [[unfold always]] : list Transfer = "nil"
+
+(* Token contract based on contract in DeepSEA repository. *)
+const _totalSupply = 100000
+
+trusted object ETH : { } {
+  let successful_transfers : list Transfer := transfer_nil (* The transfers added to this list are 'successful' in the sense that the sender had sufficient balance, the recipient's balance didn't overflow and the recipient accepted the funds (i.e. wasn't a contract that reverted.) *)
+}
+
+type message := int
+
+const _deadlinePassed_msg = 0
+const _successfullyDonated_msg = 1
+const _alreadyDonated_msg = 2
+const _funded_msg = 3
+const _failed_msg = 4
+const _too_early_to_claim_funds_msg = 5
+const _too_early_to_reclaim_msg = 6
+const _cannot_refund_msg = 7
+const _here_is_your_money_msg = 8
+const _only_owner_can_get_funds_msg = 9
+(* TODO, make the above not replicated in the .js file, but have them generated from the same source (or .js generated from here) *)
+
+event
+    | Message (msg : message)
+
+object signature CrowdfundingSig = {
+    crowdfunding_donate : uint -> unit;
+    crowdfunding_getFunds : unit -> unit;
+    crowdfunding_claim: unit -> unit;
+    token_transfer : address * uint -> unit;
+    hello_safety : unit -> int;
+    hello_safety2 : unit -> int;
+    problem_demo_1 : unit -> bool
+}
+
+object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
+    let owner : address := address(0x9Be6210aD2EB7D510C7dBC7eA0C91e4591a9f813)
+    let max_block : uint := 0u140 (* Note that according to the Scilla-Coq code, this will weirdly cause a cutoff of donations one block earlier (or even two) than seems reasonable i.e. if max_block is 6, the last donation allowed will be at block 4. *)
+    let goal : uint := 0u50
+
+    let backers : mapping[address] uint := mapping_init
+    let funded : bool := false
+
+
+    let deadlinePassed_msg : message := 0
+    let successfullyDonated_msg : message := 1
+    let alreadyDonated_msg : message := 2
+    let funded_msg : message := 3
+    let failed_msg : message := 4
+    let too_early_to_claim_funds_msg : message := 5
+    let too_early_to_reclaim_msg : message := 6
+    let cannot_refund_msg : message := 7
+    let here_is_your_money_msg : message := 8
+    
+    let hello_safety() = 
+      if (true) then
+      begin
+        ();
+        ();
+        4
+      end
+      else
+        5
+
+    let hello_safety2() = 
+      if (true) then
+        begin
+        transferEth(msg_sender, 0u140);
+        (* transferEth(msg_sender, 0u140); *) 
+        4
+        end
+      else
+        5
+    
+    let problem_demo_1() = 
+      assert(msg_sender <> this_address);
+      let bal_before = balance(this_address) in
+      assert(bal_before > 0u140);
+      transferEth(msg_sender, 0u140);
+      let bal_after = balance(this_address) in
+      (bal_before <> bal_after)
+
+    let token_transfer(addr, amount) = 
+      transferEth(addr, amount)
+
+    let crowdfunding_donate (value) =
+      let bs = backers in
+      let blk = block_number in
+      let next_block = blk + 0u1 in
+      let _max_block = max_block in
+      if (_max_block <= next_block) then
+        begin
+          (* Do not accept funds *)
+          emit Message(_deadlinePassed_msg)
+        end
+      else
+        begin
+          let backed_amount = backers[msg_sender] in
+          if (backed_amount = 0u0) then
+            begin 
+              (* Accept funds *)
+              backers[msg_sender] := value
+            end
+          else
+            (* Do not accept funds *)
+            emit Message(_alreadyDonated_msg)
+        end
+
+  let crowdfunding_getFunds () = 
+    let _owner = owner in
+    if (msg_sender = _owner) then
+      begin
+        let blk = block_number in
+        let bal = balance(this_address) in
+        let _max_block = max_block in
+        if (_max_block < blk) then
+          let _goal = goal in
+          if (_goal <= bal) then
+            begin
+              funded := true;
+              (* Send all funds to owner *)
+              emit Message(_funded_msg);
+              transferEth(_owner, bal)
+            end
+          else
+            (* Funding campaign failed, do not send funds to owner *)
+            emit Message(_failed_msg)
+        else
+          (* Too early to claim funds, do not send funds to owner. *)
+          emit Message(_too_early_to_claim_funds_msg)
+      end
+    else
+      emit Message(_only_owner_can_get_funds_msg)
+
+    let crowdfunding_claim() =
+        let blk = block_number in
+        let _max_block = max_block in
+        if (blk <= _max_block) then
+          (* Too early to reclaim, do not send funds back. *)
+          emit Message(_too_early_to_reclaim_msg)
+        else
+          let bal = balance(this_address) in
+          let backed_amount = backers[msg_sender] in
+          let _funded = funded in
+          let _goal = goal in
+          if (backed_amount = 0u0 \/ _funded \/ _goal <= bal) then
+            (* Didn't back or campaign was successful so can't refund. *)
+            emit Message(_cannot_refund_msg)
+          else
+            begin
+              (* Can refund, send funds back *)
+              backers[msg_sender] := 0u0;
+              emit Message(_here_is_your_money_msg);
+              transferEth(msg_sender, backed_amount)
+            end
+}
+
+layer signature ETHSig = {
+  ETH_object : { }
+}
+
+layer ETH_layer : [{}] ETHSig = {
+  ETH_object = ETH
+}
+
+layer CROWDFUNDING : [ {ETH_object : { }} ]  {crowdfunding : CrowdfundingSig}  = {
+    crowdfunding = Crowdfunding
+}
+
+layer CONTRACT = CROWDFUNDING @ ETH_layer

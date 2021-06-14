@@ -1,0 +1,9 @@
+_CoqProject
+.coqdeps.d
+*.aux
+*.make
+*.conf
+*.glob
+*.vo
+*.lia.cache
+Crowdfunding_Based_On_Scilla
