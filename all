@@ -1,0 +1,5 @@
+pushd ../../src/
+make
+popd
+nix-build
+./compile-for-coq
