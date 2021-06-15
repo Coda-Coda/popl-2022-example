@@ -246,7 +246,7 @@ Definition ReachableState' (d_current : global_abstract_data_type) (ps_current :
 exists (seq : Sequence) (prf : ValidSequence seq), Lists.List.In s seq.
 
 Lemma ReachableStateEquivalence : forall (d_current : global_abstract_data_type) (ps_current : persistent_state),
-  ReachableState d_current ps_current = ReachableState' d_current ps_current.
+  ReachableState d_current ps_current <-> ReachableState' d_current ps_current.
 (* TODO? *)
   Abort.
 
