@@ -263,7 +263,7 @@ Lemma ValidSequenceSub : forall s1 s2, ValidSequence (s1 ++ s2) -> ValidSequence
 Proof.
   induction s1.
    - intros. rewrite app_nil_l in H. assumption.
-   - intros.  Search (((_ :: _) ++ _)). rewrite <- app_comm_cons in H.
+   - intros. rewrite <- app_comm_cons in H.
      apply ValidSequenceOfShorter in H.
      auto.
 Qed.
@@ -275,7 +275,6 @@ Lemma ReachableStateEquivalence'' : forall (d_current : global_abstract_data_typ
      - intros.
        destruct H. destruct H.
        unfold ReachableState''.
-       Search In "++" "::".
        apply in_split in H.
        destruct H. destruct H.
        rewrite H in x0.
@@ -322,7 +321,6 @@ Proof.
       + unfold ReachableState'' in IHReachableState.
         destruct IHReachableState. destruct H1. destruct H1.
         unfold ReachableState''.
-        Search pair fst snd.
         destruct (step
         {|
         d_before_StepInfo := d_before;
