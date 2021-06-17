@@ -200,42 +200,38 @@ Definition step
 
 Definition Sequence := list StepInfo.
 
-Fixpoint ValidSequence_helper (seq : Sequence) :=
-(* Assumes the initial state was valid *)
-(* Note that the order in the sequence is increasing, e.g. [1 (init), 2, 3, 4, 5, ...] *)
-  match seq with
-  | [] => True
-  | [s] => True
-  | s1 :: ((s2 :: _) as tl) => 
-       step s1 = (d_before_StepInfo s2, ps_before_StepInfo s2)
-    /\ ValidSequence_helper tl
-end.
+(* Inductive ValidSequence (s : Sequence) : Prop :=
+  | validEmptySeq : s = [] -> ValidSequence s
+  | validSingletonSeq : match s with
+  d_before_StepInfo s = init_global_abstract_data
+  /\ ps_before_StepInfo s = snapshot_ps -> ValidSequence seq. *)
 
-Definition ValidSequence (seq : Sequence) :=
-(* Checks the initial state is valid, then calls ValidSequence_helper *)
-(* Note that the order in the sequence is increasing, e.g. [1 (init), 2, 3, 4, 5, ...] *)
-  match seq with
+Fixpoint ValidSequence (seq : Sequence) :=
+(* Note that the order in the sequence is decreasing, e.g. [n, n-1, ..., 2, 1 (init)] *)
+match seq with
   | [] => True
-  | s :: _ => 
-              d_before_StepInfo s = init_global_abstract_data
-           /\ ps_before_StepInfo s = snapshot_ps 
-           /\ ValidSequence_helper seq
+  | [s] => (*Initial state validity*)   
+           d_before_StepInfo s = init_global_abstract_data
+           /\ ps_before_StepInfo s = snapshot_ps      
+  | sNew :: ((sCurrent :: _) as tl) => 
+  step sCurrent = (d_before_StepInfo sNew, ps_before_StepInfo sNew)
+/\ ValidSequence tl
 end.
 
 Inductive ReachableState : global_abstract_data_type -> persistent_state -> Prop :=
   | initialState : ReachableState init_global_abstract_data snapshot_ps (* TODO switch to Crowdfunding_constructor_opt *)
-  | blockchainStep : forall s1 me_after d_after,
-                      let me_before := ps_before_StepInfo s1 in
-                      let d_before := d_before_StepInfo s1 in
-                      let blockchain_action := next_action_StepInfo s1 in
-                      ReachableState d_before me_before
+  | blockchainStep : forall s_before ps_after d_after,
+                      let ps_before := ps_before_StepInfo s_before in
+                      let d_before := d_before_StepInfo s_before in
+                      let blockchain_action := next_action_StepInfo s_before in
+                      ReachableState d_before ps_before
                       ->
-                      (d_after, me_after) = step {| 
-                                                   ps_before_StepInfo := me_before;
+                      (d_after, ps_after) = step {| 
+                                                   ps_before_StepInfo := ps_before;
                                                    d_before_StepInfo := d_before; 
                                                    next_action_StepInfo := blockchain_action
                                                  |}
-                      -> ReachableState d_after me_after.
+                      -> ReachableState d_after ps_after.
 
 Definition ReachableState' (d_current : global_abstract_data_type) (ps_current : persistent_state) : Prop := 
   let s :=  {| 
@@ -245,10 +241,163 @@ Definition ReachableState' (d_current : global_abstract_data_type) (ps_current :
             |} in  
 exists (seq : Sequence) (prf : ValidSequence seq), Lists.List.In s seq.
 
-Lemma ReachableStateEquivalence : forall (d_current : global_abstract_data_type) (ps_current : persistent_state),
+Definition ReachableState'' (d_current : global_abstract_data_type) (ps_current : persistent_state) : Prop := 
+  let head :=  {| 
+              ps_before_StepInfo := ps_current;
+              d_before_StepInfo := d_current; 
+              next_action_StepInfo := noOp ps_current
+            |} in  
+exists (seq : Sequence) (prf : ValidSequence (head :: seq)), True.
+
+Lemma ValidSequenceOfShorter :
+  forall a seq, ValidSequence (a :: seq) -> ValidSequence (seq).
+Proof.
+  intros.
+  destruct seq.
+   - simpl; apply I.
+   - simpl in *. destruct H.
+     assumption.
+Qed.
+
+Lemma ValidSequenceSub : forall s1 s2, ValidSequence (s1 ++ s2) -> ValidSequence s2.
+Proof.
+  induction s1.
+   - intros. rewrite app_nil_l in H. assumption.
+   - intros.  Search (((_ :: _) ++ _)). rewrite <- app_comm_cons in H.
+     apply ValidSequenceOfShorter in H.
+     auto.
+Qed.
+
+Lemma ReachableStateEquivalence'' : forall (d_current : global_abstract_data_type) (ps_current : persistent_state),
+  ReachableState' d_current ps_current <-> ReachableState'' d_current ps_current.
+  Proof.
+    split.
+     - intros.
+       destruct H. destruct H.
+       unfold ReachableState''.
+       Search In "++" "::".
+       apply in_split in H.
+       destruct H. destruct H.
+       rewrite H in x0.
+       pose proof (ValidSequenceSub x1 ({|
+       d_before_StepInfo := d_current;
+       ps_before_StepInfo := ps_current;
+       next_action_StepInfo := noOp ps_current |} :: x2) x0).
+       exists x2.
+       exists H0.
+       reflexivity.
+     - intros. destruct H. destruct H. destruct H.
+       unfold ReachableState'.
+       exists ({|
+       d_before_StepInfo := d_current;
+       ps_before_StepInfo := ps_current;
+       next_action_StepInfo := noOp ps_current |} :: x).
+       exists x0.
+       simpl. left. reflexivity.
+  Qed. 
+
+Lemma ListSplit : forall {A:Type} l, exists (l1 l2 : list A), l = l1 ++ l2.
+Proof.
+intros.
+exists l. exists [].
+simpl. rewrite app_nil_r. reflexivity.
+Qed.
+
+Lemma ReachableStateEquivalence' : forall (d_current : global_abstract_data_type) (ps_current : persistent_state),
+  ReachableState d_current ps_current <-> ReachableState'' d_current ps_current.
+Proof.
+  split.
+    - intros.
+      induction H.
+      + unfold ReachableState''.
+        exists [].
+        assert(ValidSequence
+        [{|
+         d_before_StepInfo := init_global_abstract_data;
+         ps_before_StepInfo := snapshot_ps;
+         next_action_StepInfo := noOp snapshot_ps |}]).
+        simpl. split; reflexivity.
+        exists H.
+        reflexivity.
+      + unfold ReachableState'' in IHReachableState.
+        destruct IHReachableState. destruct H1. destruct H1.
+        unfold ReachableState''.
+        Search pair fst snd.
+        destruct (step
+        {|
+        d_before_StepInfo := d_before;
+        ps_before_StepInfo := ps_before;
+        next_action_StepInfo := blockchain_action |}) eqn:Case.
+        inversion H0.
+        subst.
+        exists ({|
+        d_before_StepInfo := d_before;
+        ps_before_StepInfo := ps_before;
+        next_action_StepInfo := blockchain_action |} :: x).
+        assert(ValidSequence
+        ({|
+         d_before_StepInfo := g;
+         ps_before_StepInfo := p;
+         next_action_StepInfo := noOp p |}
+         :: {|
+            d_before_StepInfo := d_before;
+            ps_before_StepInfo := ps_before;
+            next_action_StepInfo := blockchain_action |} :: x)).
+            {
+              simpl. split. assumption.
+              destruct x eqn:SCase.
+                - simpl in x0. assumption.
+                - split.
+                  + simpl in x0. destruct x0. assumption.
+                  + apply ValidSequenceOfShorter in x0. assumption.
+            }
+        exists H1.
+        reflexivity.
+  - intros.
+    unfold ReachableState'' in H.
+    destruct H as [seq [Hseq Hs]].
+    clear Hs. revert Hseq. revert ps_current. revert d_current. revert seq.
+    induction seq.
+    + intros.
+      simpl in Hseq.
+      destruct Hseq.
+      subst.
+      apply initialState.
+    + destruct a eqn:Ha.
+      pose proof (IHseq d_before_StepInfo0 ps_before_StepInfo0).
+      intros.
+      pose proof Hseq as HseqCopy.
+      apply ValidSequenceOfShorter in Hseq.
+      apply H in Hseq.
+      apply blockchainStep with (s_before:=a). rewrite Ha. simpl. assumption.
+      
+      simpl in HseqCopy.
+      destruct HseqCopy.
+      symmetry. rewrite Ha. simpl. assumption.
+Qed.
+
+Lemma ReachableStateEquivalence''' : forall (d_current : global_abstract_data_type) (ps_current : persistent_state),
   ReachableState d_current ps_current <-> ReachableState' d_current ps_current.
-(* TODO? *)
-  Abort.
+  Proof.
+    intros.
+    rewrite ReachableStateEquivalence'.
+    rewrite ReachableStateEquivalence''.
+    split; intros; assumption.
+  Qed.
+
+Hint Rewrite ReachableStateEquivalence' ReachableStateEquivalence'' ReachableStateEquivalence''' : ReachableStateEquivalencesHints.
+
+Lemma ReachableStateEquivalences : forall (d_current : global_abstract_data_type) (ps_current : persistent_state),
+   (ReachableState d_current ps_current <-> ReachableState' d_current ps_current)
+/\ (ReachableState' d_current ps_current <-> ReachableState'' d_current ps_current)
+/\ (ReachableState'' d_current ps_current <-> ReachableState d_current ps_current).
+Proof.
+  intros.
+  autorewrite with ReachableStateEquivalencesHints.
+  remember (ReachableState'' d_current ps_current) as A.
+  clear.
+  firstorder.
+Qed.
 
 End Blockchain_Model.
 
