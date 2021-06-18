@@ -397,6 +397,27 @@ Proof.
   firstorder.
 Qed.
 
+(* Start of Crowdfunding Proofs. *)
+
+Definition Safe (P : global_abstract_data_type -> persistent_state -> Prop ) :=
+   forall d ps, ReachableState d ps -> P d ps.
+
+Definition sumInt256Tree (t : Int256Tree.t int256) : Z := 
+  List.fold_left 
+    (fun z elem => (Int256.unsigned (snd elem) + z)%Z)
+    (Int256Tree.elements t)
+    0%Z.
+
+Definition balance_backed (d : global_abstract_data_type) (ps : persistent_state) : Prop := 
+  (Crowdfunding_funded d) = false
+  -> sumInt256Tree (Crowdfunding_backers d)
+     <= Int256.unsigned (ps_balance ps (contract_address)).
+
+Lemma sufficient_funds_safe : Safe balance_backed. (*First lemma. *)
+Proof.
+  (* TODO, prove. *)
+Abort.
+
 End Blockchain_Model.
 
 End FunctionalCorrectness.
