@@ -4,7 +4,7 @@
 type addr := uint
 
 type Transfer = {
-    amount : uint;
+    amount : int;
     recipient : uint;
 }
 external let transfer_nil [[unfold always]] : list Transfer = "nil"
@@ -34,7 +34,7 @@ event
     | Message (msg : message)
 
 object signature CrowdfundingSig = {
-    donate : uint -> unit;
+    donate : unit -> unit;
     getFunds : unit -> unit;
     claim: unit -> unit
 }
@@ -42,9 +42,9 @@ object signature CrowdfundingSig = {
 object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
     let owner : address := address(0x9Be6210aD2EB7D510C7dBC7eA0C91e4591a9f813)
     let max_block : uint := 0u140 (* Note that according to the Scilla-Coq code, this will weirdly cause a cutoff of donations one block earlier (or even two) than seems reasonable i.e. if max_block is 6, the last donation allowed will be at block 4. *)
-    let goal : uint := 0u50
+    let goal : int := 50
 
-    let backers : mapping[address] uint := mapping_init
+    let backers : mapping[address] int := mapping_init
     let funded : bool := false
 
 
@@ -58,7 +58,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
     let cannot_refund_msg : message := 7
     let here_is_your_money_msg : message := 8
     
-    let donate (value) =
+    let donate () =
       let bs = backers in
       let blk = block_number in
       let next_block = blk + 0u1 in
@@ -66,15 +66,16 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
       if (_max_block <= next_block) then
         begin
           (* Do not accept funds *)
-          emit Message(_deadlinePassed_msg)
+          emit Message(_deadlinePassed_msg);
+          assert(false)
         end
       else
         begin
           let backed_amount = backers[msg_sender] in
-          if (backed_amount = 0u0) then
+          if (backed_amount = 0) then
             begin 
               (* Accept funds *)
-              backers[msg_sender] := value
+              backers[msg_sender] := msg_value
             end
           else
             (* Do not accept funds *)
@@ -118,13 +119,13 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
           let backed_amount = backers[msg_sender] in
           let _funded = funded in
           let _goal = goal in
-          if (backed_amount = 0u0 \/ _funded \/ _goal <= bal) then
+          if (backed_amount = 0 \/ _funded \/ _goal <= bal) then
             (* Didn't back or campaign was successful so can't refund. *)
             emit Message(_cannot_refund_msg)
           else
             begin
               (* Can refund, send funds back *)
-              backers[msg_sender] := 0u0;
+              backers[msg_sender] := 0;
               emit Message(_here_is_your_money_msg);
               transferEth(msg_sender, backed_amount)
             end
