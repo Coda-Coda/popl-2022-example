@@ -43,7 +43,7 @@ Context
   (snapshot_balances : addr -> int256).
 
 Context
-(address_accepts_funds : machine_env_state global_abstract_data_type -> global_abstract_data_type -> addr -> addr -> int256 -> bool).
+(address_accepts_funds : GenericMachineEnv.machine_env_state -> global_abstract_data_type -> addr -> addr -> int256 -> bool).
 
 Record persistent_state := mkPersistentState {
   ps_timestamp : int256;
@@ -501,7 +501,7 @@ Proof.
             rewrite H5.
             assumption.
           - unfold balance_backed. intros.
-
+Abort.
 End Blockchain_Model.
 
 End FunctionalCorrectness.
