@@ -1,5 +1,7 @@
 pushd ../../src/
 make
 popd
+pushd ../../
 nix-build
+popd
 ./compile-for-coq
