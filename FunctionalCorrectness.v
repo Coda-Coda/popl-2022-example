@@ -40,15 +40,15 @@ Context
   (snapshot_timestamp : int256)
   (snapshot_number : int256)
   (snapshot_blockhash : int256 -> int256)
-  (snapshot_balances : addr -> int256).
+  (snapshot_balances : addr -> Z).
 
 Context
-(address_accepts_funds : GenericMachineEnv.machine_env_state -> global_abstract_data_type -> addr -> addr -> int256 -> bool).
+(address_accepts_funds : GenericMachineEnv.machine_env_state -> global_abstract_data_type -> addr -> addr -> Z -> bool).
 
 Record persistent_state := mkPersistentState {
   ps_timestamp : int256;
   ps_number : int256;
-  ps_balance : addr -> int256;
+  ps_balance : addr -> Z;
   ps_blockhash : int256 -> int256
 }.
 
@@ -56,8 +56,8 @@ Definition snapshot_ps :=
   mkPersistentState
     snapshot_timestamp
     snapshot_number
-    snapshot_blockhash
     snapshot_balances
+    snapshot_blockhash
 .
 
 Context {HmemOps: MemoryModelOps mem}.
@@ -78,7 +78,7 @@ Inductive FunctionCall :=
 
 Inductive ContractCall :=
  | NonExistentFunction (* Calling a function that is not defined for this contract. Causes a revert. *)
- | CallFunction (f : FunctionCall) (origin caller : addr) (callvalue coinbase chainid : int256).
+ | CallFunction (f : FunctionCall) (origin caller : addr) (callvalue : Z) (coinbase chainid : int256).
 
 Definition updateTimeAndBlock ps_before block_count time_passing : persistent_state :=
 mkPersistentState
@@ -94,13 +94,13 @@ Definition validTimeChange block_count time_passing current_block_number current
   ((Int256.intval block_count) + (Int256.intval current_block_number) <=? Int256.max_unsigned)%Z
   && ((Int256.intval time_passing) + (Int256.intval current_timestamp) <=? Int256.max_unsigned)%Z.
 
-Definition updateBalances sender recipient amount balances : (addr -> int256) :=
+Definition updateBalances sender recipient amount balances : (addr -> Z) :=
   (* Here the balances are updated without checking for overflows. Overflow checks must be done elsewhere. *)
-  fun a => if Int256.eq a sender then Int256.sub (balances sender) amount
-  else if Int256.eq a recipient then Int256.add (balances recipient) amount
+  fun a => if Int256.eq a sender then (balances sender) - amount
+  else if Int256.eq a recipient then (balances recipient) + amount
   else (balances a).
 
-Definition extract_balances_from_me (ps_current : persistent_state) : addr -> int256 := 
+Definition extract_balances_from_me (ps_current : persistent_state) : addr -> Z := 
   ps_balance ps_current.
 
 Definition update_ps_balance ps_before latest_balances : persistent_state :=
@@ -111,9 +111,9 @@ Definition update_ps_balance ps_before latest_balances : persistent_state :=
   (ps_blockhash ps_before)
 .
 
-Definition noOverflowInTransfer (sender recipient : addr) (amount : int256) (balances : addr -> int256) : bool := 
-  ((Int256.intval (balances sender)) - (Int256.intval amount) >=? 0)%Z
-  && ((Int256.intval (balances recipient)) + (Int256.intval amount) <=? Int256.max_unsigned)%Z
+Definition noOverflowInTransfer (sender recipient : addr) (amount : Z) (balances : addr -> Z) : bool := 
+  ((balances sender) - amount >=? 0)%Z
+  && ((balances recipient) + amount <=? Int256.max_unsigned)%Z
 .
 
 Definition ps_new_balance (ps_before : persistent_state) (d : global_abstract_data_type) : persistent_state :=
@@ -157,7 +157,7 @@ match call with
   in  
   match f with
     | contractStep_donate amount => 
-        match runStateT (Crowdfunding_donate_opt amount me_before) d_before with
+        match runStateT (Crowdfunding_donate_opt me_before) d_before with
         | Some (_, d_after) => (d_after, extract_persistent_state me_before d_after)
         | None => (d_before, ps_before)
         end
@@ -188,7 +188,7 @@ Lemma OneTransferOnly : forall call d_before ps_before prf,
         match goal with
         | [ |- context[runStateT ?X ]] => destruct (runStateT X) eqn:SSCase end;
         [ destruct p;
-          (try (apply SingleTransferCheck.Crowdfunding_donate_opt_single_transfer with (arg1:=value) (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
+          (try (apply SingleTransferCheck.Crowdfunding_donate_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
           try (apply SingleTransferCheck.Crowdfunding_getFunds_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
           try (apply SingleTransferCheck.Crowdfunding_claim_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]))
         |
@@ -201,7 +201,7 @@ Inductive BlockchainAction (ps_before : persistent_state) :=
   | contractExecution (c : ContractCall)
   | timePassing (block_count time_passing : int256)
                 (prf : validTimeChange block_count time_passing (ps_number ps_before) (ps_timestamp ps_before) = true)
-  | externalBalanceTransfer (sender recipient : addr) (amount : int256)
+  | externalBalanceTransfer (sender recipient : addr) (amount : Z)
                             (prf : sender <> contract_address /\  noOverflowInTransfer sender recipient amount (extract_balances_from_me ps_before) = true)
   | noOp.
 
@@ -452,24 +452,21 @@ Qed.
 Definition Safe (P : global_abstract_data_type -> persistent_state -> Prop ) :=
    forall d ps, ReachableState d ps -> P d ps.
 
-Definition sumInt256Tree (t : Int256Tree.t int256) : Z := 
-  List.fold_left 
-    (fun z elem => (Int256.unsigned (snd elem) + z)%Z)
-    (Int256Tree.elements t)
-    0%Z.
-
 Definition balance_backed (d : global_abstract_data_type) (ps : persistent_state) : Prop := 
   (Crowdfunding_funded d) = false
-  -> sumInt256Tree (Crowdfunding_backers d)
-     <= Int256.unsigned (ps_balance ps (contract_address)).
+  -> Int256Tree_Properties.sum (Crowdfunding_backers d)
+     <= (ps_balance ps (contract_address)).
 
 Lemma sufficient_funds_safe : Safe balance_backed. (*First lemma. *)
 Proof.
   unfold Safe.
   intros.
   induction H.
-   - unfold balance_backed. simpl. unfold sumInt256Tree. simpl. intros.
-     pose proof Int256.unsigned_range (snapshot_blockhash contract_address). lia.
+  - unfold balance_backed. simpl. intros.
+    unfold Int256Tree_Properties.sum. unfold Int256Tree.empty.
+    unfold Int256Tree.fold1. simpl.
+    (* Up to here, stuck because Z rather than int256 loses the info that the balance is nonnegative. *)
+    pose proof Int256.unsigned_range (snapshot_balances contract_address). lia.
    - destruct blockchain_action eqn:Case.
     + destruct c eqn:SCase.
       * unfold step in H0. simpl in H0. inversion H0. assumption.
