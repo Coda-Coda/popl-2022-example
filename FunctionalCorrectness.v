@@ -71,10 +71,9 @@ Context
   (contract_address : addr).
 
 Inductive FunctionCall :=
- | contractStep_token_transfer (a : addr) (amount : int256)
- | contractStep_crowdfunding_donate (value : int256)
- | contractStep_crowdfunding_getFunds
- | contractStep_crowdfunding_claim
+ | contractStep_donate (value : int256)
+ | contractStep_getFunds
+ | contractStep_claim
 .
 
 Inductive ContractCall :=
@@ -156,14 +155,21 @@ match call with
   address_accepts_funds
   in  
   match f with
-    | contractStep_token_transfer a amount => 
-        match runStateT (Crowdfunding_token_transfer_opt a amount me_before) d_before with
+    | contractStep_donate amount => 
+        match runStateT (Crowdfunding_donate_opt amount me_before) d_before with
         | Some (_, d_after) => (d_after, extract_persistent_state me_before d_after)
         | None => (d_before, ps_before)
         end
-    | contractStep_crowdfunding_donate value => (d_before, ps_before)
-    | contractStep_crowdfunding_getFunds => (d_before, ps_before)
-    | contractStep_crowdfunding_claim => (d_before, ps_before)
+    | contractStep_getFunds => 
+        match runStateT (Crowdfunding_getFunds_opt me_before) d_before with
+        | Some (_, d_after) => (d_after, extract_persistent_state me_before d_after)
+        | None => (d_before, ps_before)
+        end
+    | contractStep_claim => 
+        match runStateT (Crowdfunding_claim_opt me_before) d_before with
+        | Some (_, d_after) => (d_after, extract_persistent_state me_before d_after)
+        | None => (d_before, ps_before)
+        end
   end
 end.
 
