@@ -34,13 +34,9 @@ event
     | Message (msg : message)
 
 object signature CrowdfundingSig = {
-    crowdfunding_donate : uint -> unit;
-    crowdfunding_getFunds : unit -> unit;
-    crowdfunding_claim: unit -> unit;
-    token_transfer : address * uint -> unit;
-    hello_safety : unit -> int;
-    hello_safety2 : unit -> int;
-    problem_demo_1 : unit -> bool
+    donate : uint -> unit;
+    getFunds : unit -> unit;
+    claim: unit -> unit
 }
 
 object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
@@ -62,38 +58,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
     let cannot_refund_msg : message := 7
     let here_is_your_money_msg : message := 8
     
-    let hello_safety() = 
-      if (true) then
-      begin
-        ();
-        ();
-        4
-      end
-      else
-        5
-
-    let hello_safety2() = 
-      if (true) then
-        begin
-        transferEth(msg_sender, 0u140);
-        (* transferEth(msg_sender, 0u140); *) 
-        4
-        end
-      else
-        5
-    
-    let problem_demo_1() = 
-      assert(msg_sender <> this_address);
-      let bal_before = balance(this_address) in
-      assert(bal_before > 0u140);
-      transferEth(msg_sender, 0u140);
-      let bal_after = balance(this_address) in
-      (bal_before <> bal_after)
-
-    let token_transfer(addr, amount) = 
-      transferEth(addr, amount)
-
-    let crowdfunding_donate (value) =
+    let donate (value) =
       let bs = backers in
       let blk = block_number in
       let next_block = blk + 0u1 in
@@ -116,7 +81,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
             emit Message(_alreadyDonated_msg)
         end
 
-  let crowdfunding_getFunds () = 
+  let getFunds () = 
     let _owner = owner in
     if (msg_sender = _owner) then
       begin
@@ -142,7 +107,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
     else
       emit Message(_only_owner_can_get_funds_msg)
 
-    let crowdfunding_claim() =
+    let claim() =
         let blk = block_number in
         let _max_block = max_block in
         if (blk <= _max_block) then
