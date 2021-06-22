@@ -43,6 +43,9 @@ Context
   (snapshot_balances : addr -> Z).
 
 Context
+  (snapshot_balances_nonnegative_prf : forall a, 0 <= snapshot_balances a).
+
+Context
 (address_accepts_funds : GenericMachineEnv.machine_env_state -> global_abstract_data_type -> addr -> addr -> Z -> bool).
 
 Record persistent_state := mkPersistentState {
@@ -465,9 +468,8 @@ Proof.
   - unfold balance_backed. simpl. intros.
     unfold Int256Tree_Properties.sum. unfold Int256Tree.empty.
     unfold Int256Tree.fold1. simpl.
-    (* Up to here, stuck because Z rather than int256 loses the info that the balance is nonnegative. *)
-    pose proof Int256.unsigned_range (snapshot_balances contract_address). lia.
-   - destruct blockchain_action eqn:Case.
+    apply snapshot_balances_nonnegative_prf.
+  - destruct blockchain_action eqn:Case.
     + destruct c eqn:SCase.
       * unfold step in H0. simpl in H0. inversion H0. assumption.
       * destruct f eqn:SSCase.
@@ -480,7 +482,7 @@ Proof.
           unfold Crowdfunding_donate_opt in SSSCase.
           inv_runStateT_branching; subst.
           - inversion H0. unfold extract_persistent_state. simpl.
-            unfold GenericMachineEnv.current_balances. unfold GenericMachineEnv.current_balances_Z.
+            unfold GenericMachineEnv.current_balances.
             unfold GenericMachineEnv.debits_from_contract.
             unfold GenericMachineEnv.credits_to_address.
             simpl.
@@ -491,11 +493,6 @@ Proof.
             unfold balance_backed in IHReachableState.
             apply IHReachableState in H1.
             unfold Int256.unsigned in H1.
-            Search Int256.intval.
-            pose proof (Int256.intrange (ps_balance ps_before contract_address)).
-            Search Int256.Z_mod_modulus Int256.modulus.
-            pose proof (Int256Indexed.modulus_nop H4).
-            rewrite H5.
             assumption.
           - unfold balance_backed. intros.
 Abort.
