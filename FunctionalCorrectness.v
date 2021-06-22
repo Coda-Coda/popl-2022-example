@@ -29,6 +29,87 @@ Require Import Additions.Tactics.
 
 Open Scope Z.
 
+
+Section GenericProofs.
+Lemma fold_snd_map : 
+  forall  A B (m : list (A * B)) x f,
+
+  (fold_left (fun (a : B) (p : A * B) => f a (snd p))
+   m x) = 
+  (fold_left f
+  (map snd m) x).
+Proof.
+    intro.
+    induction m.
+    - intros. simpl. reflexivity.
+    - intros. simpl. rewrite IHm. reflexivity.
+Qed. 
+
+Lemma sum_starting_from_init_equals_sum_plus_init : 
+forall (init : Z) (m : Int256Tree.t Z),
+  Int256Tree.fold1 Z.add m init = Z.add (Int256Tree.fold1 Z.add m 0) init.
+  Proof.
+    intros.
+    repeat rewrite Int256Tree.fold1_spec.
+    assert(
+    forall x,
+      (fold_left (fun (a : Z) (p : Int256Tree.elt * Z) => Z.add a (snd p))
+      (Int256Tree.elements m) x) = 
+      (fold_left Z.add
+      (map snd (Int256Tree.elements m)) x)).
+      {
+        intros.
+        apply fold_snd_map.
+      }
+    repeat rewrite H. clear H.
+    rewrite <- fold_left_last.
+    repeat rewrite fold_symmetric; try (intros; lia).
+    remember (map snd (Int256Tree.elements m)) as l.
+    clear Heql. clear m. generalize dependent l.
+    induction l.
+     - simpl. lia.
+     - simpl.
+      rewrite IHl.
+      reflexivity.
+  Qed.
+
+
+Lemma Int256Tree_sum_set_value_initially_zero : 
+  forall (m: Int256Tree.t Z32)  k v, Int256Tree.get_default 0 k m = 0
+                -> Int256Tree_Properties.sum (Int256Tree.set k v m) = 
+                   Int256Tree_Properties.sum m + v.
+Proof.
+  unfold Z32.
+  intros.
+  pose (@Int256Tree_Properties.sum_get_default 0 k v (Int256Tree.set k v m)) as Lemma1.
+  simpl in Lemma1.
+  unfold Int256Tree_Properties.sum.
+  rewrite Lemma1; [|  unfold Int256Tree.get_default;
+                      rewrite Int256Tree.gss;
+                      reflexivity].
+  rewrite Int256Tree_Properties.fold1_remove_set; [|intros; lia].
+  unfold Int256Tree.get_default in H.
+
+  destruct (Int256Tree.get k m) eqn:Case.
+  - rewrite H in Case.
+     assert(Zswap : forall x y a : Z, a + x + y = a + y + x) by (intros; lia).
+     epose (Int256Tree_Properties.fold1_get Z.add Zswap v Case) as H0.
+     rewrite Z.add_0_r in H0.
+     rewrite <- H0.
+     pose Int256Tree_Properties.sum_extensional.
+     apply sum_starting_from_init_equals_sum_plus_init.
+   - 
+   assert(Int256Tree.get_default 0 k m = 0).
+   unfold Int256Tree.get_default.
+   rewrite Case. reflexivity. 
+   pose (@Int256Tree_Properties.sum_get_default v k 0 m H0).
+   rewrite Z.add_0_r in e.
+   rewrite <- e.
+   apply sum_starting_from_init_equals_sum_plus_init.
+Qed.
+
+End GenericProofs.
+
 Module FunctionalCorrectness.
 
 (*
@@ -494,8 +575,24 @@ Proof.
             apply IHReachableState in H1.
             unfold Int256.unsigned in H1.
             assumption.
-          - unfold balance_backed. intros.
-Abort.
+          - unfold GenericMachineEnv.generic_machine_env in Heqb, Heqb0. simpl in Heqb, Heqb0.
+            unfold balance_backed. intros.
+            simpl in *.
+            inversion H0. simpl.
+            unfold GenericMachineEnv.current_balances.
+            unfold GenericMachineEnv.debits_from_contract.
+            unfold GenericMachineEnv.credits_to_address.
+            simpl.
+            repeat rewrite Z.add_0_r. rewrite Z.sub_0_r.
+            rewrite Int256.eq_true.
+            intros.
+            unfold balance_backed in IHReachableState.
+            rewrite H3 in H1. unfold update_Crowdfunding_backers in H1. simpl in H1.
+            apply IHReachableState in H1.
+            apply Z.eqb_eq in Heqb0.
+            rewrite Int256Tree_sum_set_value_initially_zero; [|assumption].
+            
+            rewrite <- Z.add_le_mono_r. (* Up to here *)
 End Blockchain_Model.
 
 End FunctionalCorrectness.
