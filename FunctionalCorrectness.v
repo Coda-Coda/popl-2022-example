@@ -136,6 +136,7 @@ Definition execute_contract_call (* Note that this leaves blocknumber and timest
    (call : ContractCall)
    (d_before : global_abstract_data_type)
    (ps_before : persistent_state)
+   (prf : ETH_successful_transfers d_before = [])
    : (global_abstract_data_type * persistent_state)
 :=
 match call with
@@ -173,10 +174,10 @@ match call with
   end
 end.
 
-Lemma OneTransferOnly : forall call d_before ps_before,
+Lemma OneTransferOnly : forall call d_before ps_before prf,
   (ETH_successful_transfers d_before = [])
   ->
-  let (d_after, ps_after) := (execute_contract_call call d_before ps_before) in
+  let (d_after, ps_after) := (execute_contract_call call d_before ps_before prf) in
   (length (ETH_successful_transfers d_after) <= 1)%nat.
   Proof.
     intros.
@@ -210,7 +211,27 @@ Record StepInfo := {
   next_action_StepInfo : BlockchainAction ps_before_StepInfo
 }.
 
-Definition step
+Definition resetTransfers (d : global_abstract_data_type) : global_abstract_data_type :=
+  {|
+  Crowdfunding_owner := Crowdfunding_owner d;
+  Crowdfunding_max_block := Crowdfunding_max_block d;
+  Crowdfunding_goal := Crowdfunding_goal d;
+  Crowdfunding_backers := Crowdfunding_backers d;
+  Crowdfunding_funded := Crowdfunding_funded d;
+  Crowdfunding_deadlinePassed_msg := Crowdfunding_deadlinePassed_msg d;
+  Crowdfunding_successfullyDonated_msg := Crowdfunding_successfullyDonated_msg d;
+  Crowdfunding_alreadyDonated_msg := Crowdfunding_alreadyDonated_msg d;
+  Crowdfunding_funded_msg := Crowdfunding_funded_msg d;
+  Crowdfunding_failed_msg := Crowdfunding_failed_msg d;
+  Crowdfunding_too_early_to_claim_funds_msg := Crowdfunding_too_early_to_claim_funds_msg d;
+  Crowdfunding_too_early_to_reclaim_msg := Crowdfunding_too_early_to_reclaim_msg d;
+  Crowdfunding_cannot_refund_msg := Crowdfunding_cannot_refund_msg d;
+  Crowdfunding_here_is_your_money_msg := Crowdfunding_here_is_your_money_msg d;
+  ETH_successful_transfers := nil
+|}.
+
+
+Program Definition step
   (s : StepInfo)
   : (global_abstract_data_type * persistent_state)
   :=
@@ -219,7 +240,7 @@ Definition step
   let ps_before := ps_before_StepInfo s in
   match action with
   | contractExecution c =>
-      execute_contract_call c d_before ps_before
+      execute_contract_call c (resetTransfers d_before) ps_before _
   | timePassing block_count time_passing prf => 
       (d_before, updateTimeAndBlock ps_before block_count time_passing)
   | externalBalanceTransfer sender recipient amount prf =>
@@ -444,8 +465,42 @@ Definition balance_backed (d : global_abstract_data_type) (ps : persistent_state
 
 Lemma sufficient_funds_safe : Safe balance_backed. (*First lemma. *)
 Proof.
-  (* TODO, prove. *)
-Abort.
+  unfold Safe.
+  intros.
+  induction H.
+   - unfold balance_backed. simpl. unfold sumInt256Tree. simpl. intros.
+     pose proof Int256.unsigned_range (snapshot_blockhash contract_address). lia.
+   - destruct blockchain_action eqn:Case.
+    + destruct c eqn:SCase.
+      * unfold step in H0. simpl in H0. inversion H0. assumption.
+      * destruct f eqn:SSCase.
+        {
+          unfold step in H0. simpl in H0.
+          match goal with
+          | H : context[runStateT ?X ] |- _ => destruct (runStateT X) eqn:SSSCase end; [|inversion H0; assumption].
+          destruct p.
+          Transparent Crowdfunding_donate_opt.
+          unfold Crowdfunding_donate_opt in SSSCase.
+          inv_runStateT_branching; subst.
+          - inversion H0. unfold extract_persistent_state. simpl.
+            unfold GenericMachineEnv.current_balances. unfold GenericMachineEnv.current_balances_Z.
+            unfold GenericMachineEnv.debits_from_contract.
+            unfold GenericMachineEnv.credits_to_address.
+            simpl.
+            unfold balance_backed. simpl.
+            repeat rewrite Z.add_0_r. rewrite Z.sub_0_r.
+            rewrite Int256.eq_true.
+            intros.
+            unfold balance_backed in IHReachableState.
+            apply IHReachableState in H1.
+            unfold Int256.unsigned in H1.
+            Search Int256.intval.
+            pose proof (Int256.intrange (ps_balance ps_before contract_address)).
+            Search Int256.Z_mod_modulus Int256.modulus.
+            pose proof (Int256Indexed.modulus_nop H4).
+            rewrite H5.
+            assumption.
+          - unfold balance_backed. intros.
 
 End Blockchain_Model.
 
