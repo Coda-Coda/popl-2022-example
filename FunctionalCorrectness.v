@@ -173,6 +173,29 @@ match call with
   end
 end.
 
+Lemma OneTransferOnly : forall call d_before ps_before,
+  (ETH_successful_transfers d_before = [])
+  ->
+  let (d_after, ps_after) := (execute_contract_call call d_before ps_before) in
+  (length (ETH_successful_transfers d_after) <= 1)%nat.
+  Proof.
+    intros.
+    destruct call eqn:Case.
+    - simpl. rewrite H. auto.
+    - destruct f eqn:SCase;
+        (simpl;
+        match goal with
+        | [ |- context[runStateT ?X ]] => destruct (runStateT X) eqn:SSCase end;
+        [ destruct p;
+          (try (apply SingleTransferCheck.Crowdfunding_donate_opt_single_transfer with (arg1:=value) (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
+          try (apply SingleTransferCheck.Crowdfunding_getFunds_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
+          try (apply SingleTransferCheck.Crowdfunding_claim_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=ps_balance ps_before) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]))
+        |
+          rewrite H; auto
+        ])
+        .
+  Qed.
+
 Inductive BlockchainAction (ps_before : persistent_state) :=
   | contractExecution (c : ContractCall)
   | timePassing (block_count time_passing : int256)
