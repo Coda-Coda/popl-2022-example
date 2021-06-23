@@ -178,11 +178,13 @@ Definition validTimeChange block_count time_passing current_block_number current
   ((Int256.intval block_count) + (Int256.intval current_block_number) <=? Int256.max_unsigned)%Z
   && ((Int256.intval time_passing) + (Int256.intval current_timestamp) <=? Int256.max_unsigned)%Z.
 
-Definition updateBalances sender recipient amount balances : (addr -> Z) :=
+Definition update_balances sender recipient amount balances : (addr -> Z) :=
   (* Here the balances are updated without checking for overflows. Overflow checks must be done elsewhere. *)
-  fun a => if Int256.eq a sender then (balances sender) - amount
-  else if Int256.eq a recipient then (balances recipient) + amount
-  else (balances a).
+  fun a => 
+  if Int256.eq sender recipient then balances a else
+    if Int256.eq a sender then (balances sender) - amount else
+     if Int256.eq a recipient then (balances recipient) + amount
+      else (balances a).
 
 Definition extract_balances_from_me (ps_current : persistent_state) : addr -> Z := 
   ps_balance ps_current.
