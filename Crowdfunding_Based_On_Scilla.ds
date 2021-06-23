@@ -59,6 +59,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
     let here_is_your_money_msg : message := 8
     
     let donate () =
+      assert(msg_sender <> this_address);
       let bs = backers in
       let blk = block_number in
       let next_block = blk + 0u1 in
@@ -79,10 +80,12 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
             end
           else
             (* Do not accept funds *)
-            emit Message(_alreadyDonated_msg)
+            emit Message(_alreadyDonated_msg);
+            assert(false)
         end
 
   let getFunds () = 
+    assert(msg_sender <> this_address);
     let _owner = owner in
     if (msg_sender = _owner) then
       begin
@@ -109,6 +112,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
       emit Message(_only_owner_can_get_funds_msg)
 
     let claim() =
+        assert(msg_sender <> this_address);
         let blk = block_number in
         let _max_block = max_block in
         if (blk <= _max_block) then

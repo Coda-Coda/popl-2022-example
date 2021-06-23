@@ -108,6 +108,19 @@ Proof.
    apply sum_starting_from_init_equals_sum_plus_init.
 Qed.
 
+Lemma EmptyUpdateBalancesIsSame :
+  forall a contract_address balances, 
+  GenericMachineEnv.current_balances contract_address balances [] a = balances a.
+Proof.
+  intros.
+  unfold GenericMachineEnv.current_balances.
+  destruct (Int256.eq a contract_address).
+    - unfold GenericMachineEnv.credits_to_address, GenericMachineEnv.debits_from_contract. simpl.
+      lia. 
+    - unfold GenericMachineEnv.credits_to_address, GenericMachineEnv.debits_from_contract. simpl.
+      lia.
+Qed.
+
 End GenericProofs.
 
 Module FunctionalCorrectness.
@@ -235,19 +248,13 @@ match call with
       (ps_blockhash ps_before)
       chainid
       origin 
-  origin 
-      origin 
       contract_address
       caller
       callvalue
       (update_balances caller contract_address callvalue (ps_balance ps_before))
       address_accepts_funds
       in
-  in  
-      in
       match f with
-      | contractStep_donate amount => 
-    | contractStep_donate amount => 
       | contractStep_donate amount => 
           match runStateT (Crowdfunding_donate_opt me) d_before with
           | Some (_, d_after) => 
@@ -255,14 +262,10 @@ match call with
           | None => (d_before, ps_before) (* Revert *)
           end
       | contractStep_getFunds => 
-    | contractStep_getFunds => 
-      | contractStep_getFunds => 
           match runStateT (Crowdfunding_getFunds_opt me) d_before with
           | Some (_, d_after) => (d_after, next_persistent_state me d_after)
           | None => (d_before, ps_before) (* Revert *)
           end
-      | contractStep_claim => 
-    | contractStep_claim => 
       | contractStep_claim => 
           match runStateT (Crowdfunding_claim_opt me) d_before with
           | Some (_, d_after) => (d_after, next_persistent_state me d_after)
@@ -550,6 +553,8 @@ Proof.
   firstorder.
 Qed.
 
+
+
 (* Start of Crowdfunding Proofs. *)
 
 Definition Safe (P : global_abstract_data_type -> persistent_state -> Prop ) :=
@@ -589,7 +594,8 @@ Proof.
           Transparent Crowdfunding_donate_opt.
           unfold Crowdfunding_donate_opt in SSSCase.
           inv_runStateT_branching; subst.
-          - inversion H0. unfold extract_persistent_state. simpl.
+          - discriminate. 
+          - inversion H0. unfold next_persistent_state. simpl.
             unfold GenericMachineEnv.current_balances.
             unfold GenericMachineEnv.debits_from_contract.
             unfold GenericMachineEnv.credits_to_address.
@@ -600,26 +606,26 @@ Proof.
             intros.
             unfold balance_backed in IHReachableState.
             apply IHReachableState in H1.
-            unfold Int256.unsigned in H1.
-            assumption.
-          - unfold GenericMachineEnv.generic_machine_env in Heqb, Heqb0. simpl in Heqb, Heqb0.
-            unfold balance_backed. intros.
-            simpl in *.
-            inversion H0. simpl.
-            unfold GenericMachineEnv.current_balances.
-            unfold GenericMachineEnv.debits_from_contract.
-            unfold GenericMachineEnv.credits_to_address.
-            simpl.
-            repeat rewrite Z.add_0_r. rewrite Z.sub_0_r.
+            unfold update_balances.
             rewrite Int256.eq_true.
-            intros.
-            unfold balance_backed in IHReachableState.
-            rewrite H3 in H1. unfold update_Crowdfunding_backers in H1. simpl in H1.
-            apply IHReachableState in H1.
+            unfold GenericMachineEnv.generic_machine_env in Heqb0. simpl in Heqb0.
             apply Z.eqb_eq in Heqb0.
-            rewrite Int256Tree_sum_set_value_initially_zero; [|assumption].
-            
-            rewrite <- Z.add_le_mono_r. (* Up to here *)
+            destruct (Int256.eq contract_address caller) eqn:SSSCase.
+            + 
+            apply Int256eq_true in SSSCase.
+              unfold GenericMachineEnv.generic_machine_env in H5; simpl in H5.
+              rewrite SSSCase in H5.
+              clear -H5.
+              rewrite Int256.eq_true in H5. 
+              discriminate.
+            + rewrite Int256Tree_sum_set_value_initially_zero; [|assumption].
+              rewrite Int256.eq_sym, SSSCase.
+              rewrite <- Z.add_le_mono_r.
+              assumption.
+          - discriminate.
+        }
+Abort.
+
 End Blockchain_Model.
 
 End FunctionalCorrectness.
