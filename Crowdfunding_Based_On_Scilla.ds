@@ -79,9 +79,11 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
               backers[msg_sender] := msg_value
             end
           else
-            (* Do not accept funds *)
-            emit Message(_alreadyDonated_msg);
-            assert(false)
+            begin
+              (* Do not accept funds *)
+              emit Message(_alreadyDonated_msg);
+              assert(false)
+            end
         end
 
   let getFunds () = 
