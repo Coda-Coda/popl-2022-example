@@ -88,6 +88,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
 
   let getFunds () = 
     assert(msg_sender <> this_address);
+    assert(msg_value = 0);
     let _owner = owner in
     if (msg_sender = _owner) then
       begin
@@ -115,6 +116,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
 
     let claim() =
         assert(msg_sender <> this_address);
+        assert(msg_value = 0);
         let blk = block_number in
         let _max_block = max_block in
         if (blk <= _max_block) then
