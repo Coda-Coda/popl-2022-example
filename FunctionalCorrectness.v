@@ -121,7 +121,83 @@ Proof.
       lia.
 Qed.
 
+Lemma sum_set_0_remove : 
+  forall k m,
+  Int256Tree.fold1 Z.add (Int256Tree.set k 0 m) 0 =
+  Int256Tree.fold1 Z.add (Int256Tree.remove k m) 0.
+Proof.
+  intros.
+  pose (Int256Tree.grs k m).
+  pose (Int256Tree_Properties.set_permutation 0 e).
+  rewrite <- Int256Tree_Properties.elements_set_decompose in p.
+  repeat rewrite Int256Tree.fold1_spec.
+  assert(Hf_comm : forall (b1 b2 : Int256Tree.elt * Z) (a : Z),
+  a + snd b1 + snd b2 = a + snd b2 + snd b1) by (intros; lia).
+  epose (@Int256Tree_Properties.fold1_permutation 
+            _ _ (fun (a:Z) (p0 : Int256Tree.elt * Z) => a + snd p0)
+            Hf_comm
+            (Int256Tree.elements (Int256Tree.set k 0 m))
+            ((k, 0) :: Int256Tree.elements (Int256Tree.remove k m))
+            p).
+  rewrite e0.
+  simpl.
+  reflexivity.
+Qed.
+
+Lemma sum_set_0_minus : forall k m v, Int256Tree.get_default 0 k m = v ->
+Int256Tree_Properties.sum (Int256Tree.set k 0 m) = Int256Tree_Properties.sum m - v.
+Proof.
+  intros.
+  unfold Int256Tree_Properties.sum.
+  unfold Int256Tree.get_default in H.
+  destruct (Int256Tree.get k m) eqn:Case.
+    - subst.
+      assert((forall x y a : Z, a + x + y = a + y + x)) by (intros; lia).
+      epose (Int256Tree_Properties.fold1_get Z.add H 0 Case).
+      rewrite e.
+      simpl.
+      rewrite (sum_starting_from_init_equals_sum_plus_init v).
+      Set Printing All.
+      assert((Z.sub
+      (Z.add (@Int256Tree.fold1 Z Z Z.add (@Int256Tree.remove Z k m) Z0) v) v) = 
+      (@Int256Tree.fold1 Z Z Z.add (@Int256Tree.remove Z k m) Z0)).
+      lia.
+      rewrite H0.
+      apply sum_set_0_remove.
+  - unfold HyperType.ht_default in H. subst.
+    rewrite Z.sub_0_r.
+    pose (Int256Tree_Properties.set_permutation 0 Case).
+    repeat rewrite Int256Tree.fold1_spec.
+    rewrite Int256Tree_Properties.fold1_permutation 
+      with (l':=((k, 0) :: Int256Tree.elements m)); [|intros; lia|assumption].
+    simpl. reflexivity.
+Qed.
+
+
+Lemma Int256Tree_sum_minus : 
+  forall m k x,
+    Int256Tree_Properties.sum m <= x
+    ->
+    Int256Tree_Properties.sum (Int256Tree.set k 0 m) <=
+    x - (Int256Tree.get_default 0 k m).
+    intros.
+    rewrite sum_set_0_minus with (v:= Int256Tree.get_default 0 k m) by reflexivity.
+    lia.
+Qed.
+
+
 End GenericProofs.
+
+Ltac inv_runStateT_branching_with_me_transfer_cases :=
+      repeat (
+        try inv_runStateT_branching;
+        let Case := fresh "SufficientFundsToTransferCase" in
+        try match goal with
+          | H : context[me_transfer _  _ _] |- _ => 
+          unfold me_transfer, GenericMachineEnv.generic_machine_env in H;
+          destruct (GenericMachineEnv.successful_transfer _ _ _ _) eqn:Case
+        end
+      ).
 
 Module FunctionalCorrectness.
 
@@ -166,6 +242,12 @@ Instance GlobalLayerSpec : LayerSpecClass := {
 
 Context
   (contract_address : addr).
+
+(* The following is reasonable to assume. *)
+Definition address_accepts_funds_guaranteed_for_contract 
+  mes d sender recipient amount :=
+  if Int256.eq sender contract_address then true else
+  address_accepts_funds mes d sender recipient amount.
 
 Inductive FunctionCall :=
  | contractStep_donate (value : int256)
@@ -252,7 +334,7 @@ match call with
       caller
       callvalue
       (update_balances caller contract_address callvalue (ps_balance ps_before))
-      address_accepts_funds
+      address_accepts_funds_guaranteed_for_contract
       in
       match f with
       | contractStep_donate amount => 
@@ -294,9 +376,9 @@ Lemma OneTransferOnly : forall call d_before ps_before prf,
       match goal with
       | [ |- context[runStateT ?X ]] => destruct (runStateT X) eqn:SSCase end;
       [ destruct p;
-        (try (apply SingleTransferCheck.Crowdfunding_donate_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=(update_balances caller contract_address callvalue (ps_balance ps_before))) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
-        try (apply SingleTransferCheck.Crowdfunding_getFunds_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=(update_balances caller contract_address callvalue (ps_balance ps_before))) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]);
-        try (apply SingleTransferCheck.Crowdfunding_claim_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=(update_balances caller contract_address callvalue (ps_balance ps_before))) (address_accepts_funds:=address_accepts_funds) (result:=u); [assumption | apply SSCase]))
+        (try (apply SingleTransferCheck.Crowdfunding_donate_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=(update_balances caller contract_address callvalue (ps_balance ps_before))) (address_accepts_funds:=address_accepts_funds_guaranteed_for_contract) (result:=u); [assumption | apply SSCase]);
+        try (apply SingleTransferCheck.Crowdfunding_getFunds_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=(update_balances caller contract_address callvalue (ps_balance ps_before))) (address_accepts_funds:=address_accepts_funds_guaranteed_for_contract) (result:=u); [assumption | apply SSCase]);
+        try (apply SingleTransferCheck.Crowdfunding_claim_opt_single_transfer with (d:=d_before) (coinbase:=coinbase) (timestamp:=ps_timestamp ps_before) (number:=ps_number ps_before) (blockhash:=ps_blockhash ps_before) (chainid:=chainid) (origin:=origin) (contract_address:=contract_address) (caller:=caller) (callvalue:=callvalue) (initial_balances:=(update_balances caller contract_address callvalue (ps_balance ps_before))) (address_accepts_funds:=address_accepts_funds_guaranteed_for_contract) (result:=u); [assumption | apply SSCase]))
       |
         rewrite H; auto
       ]).
@@ -308,7 +390,7 @@ Inductive BlockchainAction (ps_before : persistent_state) :=
   | timePassing (block_count time_passing : int256)
                 (prf : validTimeChange block_count time_passing (ps_number ps_before) (ps_timestamp ps_before) = true)
   | externalBalanceTransfer (sender recipient : addr) (amount : Z)
-                            (prf : sender <> contract_address /\  noOverflowOrUnderflowInTransfer sender recipient amount (ps_balance ps_before) = true)
+                            (prf : sender <> contract_address /\ amount >= 0 /\  noOverflowOrUnderflowInTransfer sender recipient amount (ps_balance ps_before) = true)
   | noOp.
 
 Record StepInfo := {
@@ -553,7 +635,25 @@ Proof.
   firstorder.
 Qed.
 
-
+Lemma addZeroBalance : forall ps_before caller contract_address,
+GenericMachineEnv.current_balances contract_address
+              (update_balances caller contract_address 0 (ps_balance ps_before)) []
+              contract_address = (ps_balance ps_before) contract_address.
+Proof.
+  intros.
+  unfold GenericMachineEnv.current_balances, update_balances, GenericMachineEnv.credits_to_address, GenericMachineEnv.debits_from_contract.
+  rewrite Int256.eq_true.
+  destruct (Int256.eq caller contract_address0) eqn:Case.
+  - simpl. 
+    repeat rewrite Z.add_0_r.
+    repeat rewrite Z.sub_0_r.
+    reflexivity.
+  - rewrite Int256.eq_sym in Case.
+    rewrite Case.
+    repeat rewrite Z.add_0_r.
+    repeat rewrite Z.sub_0_r.
+    reflexivity.
+Qed.
 
 (* Start of Crowdfunding Proofs. *)
 
@@ -564,6 +664,26 @@ Definition balance_backed (d : global_abstract_data_type) (ps : persistent_state
   (Crowdfunding_funded d) = false
   -> Int256Tree_Properties.sum (Crowdfunding_backers d)
      <= (ps_balance ps (contract_address)).
+
+Lemma balance_backed_in_next_state : forall d_before d_after ps_before callvalue caller origin chainid coinbase,
+     balance_backed d_before ps_before -> d_after = resetTransfers d_before -> (callvalue =? 0) = true -> negb (Int256.eq caller contract_address) = true -> balance_backed (resetTransfers d_before)
+                 (next_persistent_state
+                    (GenericMachineEnv.generic_machine_env coinbase 
+                       (ps_timestamp ps_before) (ps_number ps_before)
+                       (ps_blockhash ps_before) chainid origin contract_address caller
+                       callvalue
+                       (update_balances caller contract_address callvalue
+                          (ps_balance ps_before)) address_accepts_funds_guaranteed_for_contract)
+                    (resetTransfers d_before)).
+Proof.
+  intros.
+  unfold resetTransfers; unfold balance_backed; simpl.
+  unfold balance_backed in H.
+  apply Z.eqb_eq in H1.
+  rewrite H1.
+  rewrite addZeroBalance.
+  assumption.
+Qed.
 
 Lemma sufficient_funds_safe : Safe balance_backed. (*First lemma. *)
 Proof.
@@ -593,8 +713,7 @@ Proof.
           destruct p.
           Transparent Crowdfunding_donate_opt.
           unfold Crowdfunding_donate_opt in SSSCase.
-          inv_runStateT_branching; subst.
-          - discriminate. 
+          inv_runStateT_branching; subst; try discriminate.
           - inversion H0. unfold next_persistent_state. simpl.
             unfold GenericMachineEnv.current_balances.
             unfold GenericMachineEnv.debits_from_contract.
@@ -610,21 +729,119 @@ Proof.
             rewrite Int256.eq_true.
             unfold GenericMachineEnv.generic_machine_env in Heqb0. simpl in Heqb0.
             apply Z.eqb_eq in Heqb0.
-            destruct (Int256.eq contract_address caller) eqn:SSSCase.
-            + 
-            apply Int256eq_true in SSSCase.
-              unfold GenericMachineEnv.generic_machine_env in H5; simpl in H5.
-              rewrite SSSCase in H5.
-              clear -H5.
-              rewrite Int256.eq_true in H5. 
-              discriminate.
-            + rewrite Int256Tree_sum_set_value_initially_zero; [|assumption].
-              rewrite Int256.eq_sym, SSSCase.
-              rewrite <- Z.add_le_mono_r.
-              assumption.
-          - discriminate.
+            destruct (Int256.eq contract_address caller) eqn:SSSCase;
+            [
+              apply Int256eq_true in SSSCase;
+              unfold GenericMachineEnv.generic_machine_env in H5; simpl in H5;
+              rewrite SSSCase in H5;
+              clear -H5;
+              rewrite Int256.eq_true in H5; 
+              discriminate
+            |].
+            rewrite Int256Tree_sum_set_value_initially_zero; [|assumption].
+            rewrite Int256.eq_sym, SSSCase.
+            rewrite <- Z.add_le_mono_r.
+            assumption.
         }
-Abort.
+        {
+          unfold step in H0. simpl in H0.
+          destruct (noOverflowOrUnderflowInTransfer caller contract_address callvalue
+          (ps_balance ps_before));
+          [|
+            inversion H0;
+            unfold resetTransfers; unfold balance_backed; simpl;
+            unfold balance_backed in IHReachableState;
+            assumption
+          ].
+          match goal with
+          | H : context[runStateT ?X ] |- _ => destruct (runStateT X) eqn:SSSCase end; [|inversion H0; assumption].
+          destruct p.
+          Transparent Crowdfunding_getFunds_opt.
+          unfold Crowdfunding_getFunds_opt in SSSCase.
+          inv_runStateT_branching; subst.
+          2,3,4 : inversion H0; apply balance_backed_in_next_state with (d_after:=d_after); assumption.
+          unfold balance_backed.
+          intros.
+          inv_runStateT_branching_with_me_transfer_cases; subst.
+          - match goal with | H : (d_after, ps_after) = _ |- _ => inversion H end.
+            subst. inversion H1.
+          - rewrite Int256.eq_true in Heqb2. discriminate.
+          - rewrite Int256.eq_false in Heqb2 by (unfold not; intros; discriminate). discriminate.
+          - simpl in SSSCase1. inversion SSSCase1.
+        }
+        {
+          unfold step in H0. simpl in H0.
+          destruct (noOverflowOrUnderflowInTransfer caller contract_address callvalue
+          (ps_balance ps_before));
+          [|
+            inversion H0;
+            unfold resetTransfers; unfold balance_backed; simpl;
+            unfold balance_backed in IHReachableState;
+            assumption
+          ].
+          match goal with
+          | H : context[runStateT ?X ] |- _ => destruct (runStateT X) eqn:SSSCase end; [|inversion H0; assumption].
+          destruct p.
+          Transparent Crowdfunding_claim_opt.
+          unfold Crowdfunding_claim_opt in SSSCase.
+          inv_runStateT_branching; subst.
+          1,2 : inversion H0; apply balance_backed_in_next_state with (d_after:=d_after); assumption.
+          inversion H0; subst.
+          inv_runStateT_branching_with_me_transfer_cases; subst.
+          simpl.
+          all: simpl in SufficientFundsToTransferCase.
+          - clear Heqb1.
+            unfold balance_backed.
+            unfold GenericMachineEnv.d_with_transfer.
+            simpl.
+            intros.
+            apply IHReachableState in H1.
+            unfold GenericMachineEnv.current_balances.
+            rewrite Int256.eq_true.
+            unfold GenericMachineEnv.debits_from_contract, GenericMachineEnv.credits_to_address.
+            simpl.
+            simpl in H5.
+            destruct (Int256.eq caller contract_address) eqn:SCase; try discriminate.
+            unfold update_balances.
+            rewrite SCase.
+            rewrite Int256.eq_sym in SCase.
+            rewrite SCase.
+            rewrite Int256.eq_true.
+            Search callvalue 0.
+            simpl in H11.
+            rewrite Z.eqb_eq in H11.
+            rewrite H11.
+            repeat rewrite Z.add_0_r. repeat rewrite Z.sub_0_r.
+            apply Int256Tree_sum_minus.
+            assumption.
+          - rewrite Int256.eq_true in Heqb1. discriminate.
+          - rewrite Int256.eq_false in Heqb1 by (unfold not; intros; discriminate). discriminate.
+          - simpl in SSSCase1. inversion SSSCase1.
+        }
+    + unfold step in H0. simpl in H0. inversion H0.
+      unfold balance_backed.
+      unfold updateTimeAndBlock.
+      simpl.
+      assumption.
+    + unfold step in H0. simpl in H0. inversion H0.
+      unfold balance_backed.
+      unfold update_ps_balance.
+      simpl.
+      destruct prf. destruct a.
+      intros.
+      apply IHReachableState in H1.
+      unfold update_balances.
+      destruct (Int256.eq sender recipient); try assumption.
+      destruct (Int256.eq contract_address sender) eqn:SCase.
+        * apply Int256eq_true in SCase. symmetry in SCase. contradiction.
+        * destruct(Int256.eq contract_address recipient) eqn:SSCase.
+          -- apply Int256eq_true in SSCase. rewrite <- SSCase. lia.
+          -- assumption.
+    + unfold step in H0. simpl in H0. inversion H0.
+      assumption.
+Qed.
+
+Print Assumptions sufficient_funds_safe.
 
 End Blockchain_Model.
 
