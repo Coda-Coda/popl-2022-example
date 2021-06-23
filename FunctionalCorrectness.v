@@ -588,12 +588,41 @@ Proof.
             unfold balance_backed in IHReachableState;
             assumption
           ].
-          - match goal with
-            | H : context[runStateT ?X ] |- _ => destruct (runStateT X) eqn:SSSCase end; [|inversion H0; assumption].
-            destruct p.
-            Transparent Crowdfunding_donate_opt.
-            unfold Crowdfunding_donate_opt in SSSCase.
-            inv_runStateT_branching; subst; discriminate.
+          match goal with
+          | H : context[runStateT ?X ] |- _ => destruct (runStateT X) eqn:SSSCase end; [|inversion H0; assumption].
+          destruct p.
+          Transparent Crowdfunding_donate_opt.
+          unfold Crowdfunding_donate_opt in SSSCase.
+          inv_runStateT_branching; subst.
+          - discriminate. 
+          - inversion H0. unfold next_persistent_state. simpl.
+            unfold GenericMachineEnv.current_balances.
+            unfold GenericMachineEnv.debits_from_contract.
+            unfold GenericMachineEnv.credits_to_address.
+            simpl.
+            unfold balance_backed. simpl.
+            repeat rewrite Z.add_0_r. rewrite Z.sub_0_r.
+            rewrite Int256.eq_true.
+            intros.
+            unfold balance_backed in IHReachableState.
+            apply IHReachableState in H1.
+            unfold update_balances.
+            rewrite Int256.eq_true.
+            unfold GenericMachineEnv.generic_machine_env in Heqb0. simpl in Heqb0.
+            apply Z.eqb_eq in Heqb0.
+            destruct (Int256.eq contract_address caller) eqn:SSSCase.
+            + 
+            apply Int256eq_true in SSSCase.
+              unfold GenericMachineEnv.generic_machine_env in H5; simpl in H5.
+              rewrite SSSCase in H5.
+              clear -H5.
+              rewrite Int256.eq_true in H5. 
+              discriminate.
+            + rewrite Int256Tree_sum_set_value_initially_zero; [|assumption].
+              rewrite Int256.eq_sym, SSSCase.
+              rewrite <- Z.add_le_mono_r.
+              assumption.
+          - discriminate.
         }
 Abort.
 
