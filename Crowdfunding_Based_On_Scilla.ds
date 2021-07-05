@@ -41,7 +41,7 @@ object signature CrowdfundingSig = {
 
 object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
     let owner : address := address(0x9Be6210aD2EB7D510C7dBC7eA0C91e4591a9f813)
-    let max_block : uint := 0u140 (* Note that according to the Scilla-Coq code, this will weirdly cause a cutoff of donations one block earlier (or even two) than seems reasonable i.e. if max_block is 6, the last donation allowed will be at block 4. *)
+    let max_block : uint := 0u140 (* The last block number when donations are accepted. *)
     let goal : int := 50
 
     let backers : mapping[address] int := mapping_init
@@ -62,9 +62,8 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
       assert(msg_sender <> this_address);
       let bs = backers in
       let blk = block_number in
-      let next_block = blk + 0u1 in
       let _max_block = max_block in
-      if (_max_block <= next_block) then
+      if (blk > _max_block) then
         begin
           (* Do not accept funds *)
           emit Message(_deadlinePassed_msg);
@@ -74,10 +73,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
         begin
           let backed_amount = backers[msg_sender] in
           if (backed_amount = 0) then
-            begin 
-              (* Accept funds *)
               backers[msg_sender] := msg_value
-            end
           else
             begin
               (* Do not accept funds *)
@@ -95,7 +91,7 @@ object Crowdfunding (ETH_object : { } ) : CrowdfundingSig {
         let blk = block_number in
         let bal = balance(this_address) in
         let _max_block = max_block in
-        if (_max_block < blk) then
+        if (blk > _max_block) then
           let _goal = goal in
           if (_goal <= bal) then
             begin
