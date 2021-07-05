@@ -1,4 +1,5 @@
 Require Import DeepSpec.lib.Monad.RunStateTInv.
+Require Import DeepSpec.Runtime.
 Require Import backend.MachineModel.
 Require Import GenericMachineEnv.
 
@@ -14,3 +15,14 @@ Ltac deepsea_inversion :=
       destruct (GenericMachineEnv.successful_transfer _ _ _ _) eqn:Case
     end
   ).
+
+
+(* This is useful in Obj_____CodeProofs.v
+Add:
+Require Import Additions.Tactics.
+*)
+Ltac code_proofs_auto :=
+    intros;
+    unfold synth_func_obligation;
+    repeat (split; auto)
+.
